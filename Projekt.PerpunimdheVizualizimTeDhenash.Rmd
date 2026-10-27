@@ -1,0 +1,705 @@
+---
+title: "PERPUNIMI DHE VIZUALIZIMI I TE DHENAVE TE KLIENTEVE TE NJE BANKE"
+author: "Franceska Shkembi"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+    highlight: tango
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+---
+
+# Hyrje mbi Dataset-in
+
+## Pershkrim
+Banka eshte nje institucion thelbesor ne jeten ekonomike dhe shoqerore te çdo individi, duke filluar nga llogaria e pare e kursimeve, tek kredit per banese, pagesat mujore dhe investimet afatgjata. Kjo prani universale e ben sektorin bankar nje fushe jashtezakonisht te pasur per analize te te dhenave.
+Ky projekt fokusohet ne studimin e sjelljes se klienteve te nje banke, me qellim te veçante identifikimin e faktoreve qe ndikojne ne vendimin e tyre per te vazhduar ose per te braktisur sherbimet bankare, nje fenomen i njohur ne literaturen e biznesit si “customer churn”.
+
+**Burimi i te dhenave:** Kaggle - Bank Customer Churn Prediction Dataset
+
+**Qellimi i dataset-it:** Te kuptohet profili i klienteve qe braktisin banken
+Te kuptohen marredheniet midis variablave demografike, financiare dhe sjelljes bankare.
+
+**Numri i vrojtimeve dhe variablave:** Dataset-i permban **10,000 vrojtime**
+(kliente) dhe **11 variabla**.
+
+## Pershkrimi i Variablave
+
+| Variabli | Lloji | Pershkrimi |
+|---|---|---|
+| CreditScore | Sasior i vazhduesshem | Piket e kreditit te klientit (350-850) |
+| Geography | Cilesor nominal | Vendi i klientit (France, Germany, Spain) |
+| Gender | Cilesor nominal | Gjinia (Male, Female) |
+| Age | Sasior i vazhduesshem | Mosha e klientit (vite) |
+| Tenure | Sasior diskret | Vitet qe klienti eshte anetare i bankes (0-10) |
+| Balance | Sasior i vazhduesshem | Bilanci i llogarise (EUR) |
+| NumOfProducts | Sasior diskret | Numri i produkteve bankare (1-4) |
+| HasCrCard | Cilesor binar | A ka karte krediti? (0 = Jo, 1 = Po) |
+| IsActiveMember | Cilesor binar | A eshte anetare aktiv? (0 = Jo, 1 = Po) |
+| EstimatedSalary | Sasior i vazhduesshem | Paga e vleresuar vjetore (EUR) |
+| Exited | Cilesor binar | A ka braktisur banken? (0 = Jo, 1 = Po) |
+
+---
+
+# Importimi i te Dhenave
+
+```{r importimi}
+# Ngarkojme paketat e nevojshme
+library(tidyverse)   # Per manipulim dhe vizualizim te dhenash
+library(readr)       # Per importimin e skedareve CSV
+library(corrplot)    # Per vizualizimin e matrices se korrelacionit
+library(plotly)      # Per grafiket interaktive
+
+banka <- read_csv("Datasett.csv", show_col_types = FALSE)      # Importojme dataset-in me read_csv() nga paketa readr
+
+# Verifikojme se importi shkoi mire duke shfaqur 6 rreshtat e pare
+head(banka)
+```
+
+---
+
+# Analiza eksploruese e te dhenave (EDA)
+
+## Struktura e Dataset-it
+
+```{r struktura}
+glimpse(banka)  # glimpse() na jep nje pamje te shpejte te struktures pra numrin e rreshtave dhe kolonave, tipin e cdo variabli, disa vlera te para per cdo kolone
+```
+
+Dataseti ka 10,000 rreshta dhe 11 kolona. Shumica e variablave jane lexuar si `<dbl>` (numerike). Variablat Geography dhe Gender duhen konvertuar ne faktore per analizat pasuese.
+
+## Permbledhje statistikore
+
+```{r permbledhje}
+summary(banka)   # summary() ofron statistika permbledhese per cdo kolone:
+                 # per variablat numerike: min, Q1, median, mean, Q3, max dhe numrin e NA-ve
+                 # per variablat kategorike: frekuencen e kategorive
+```
+- **CreditScore:** Mesatarja eshte 650.5, me vlera nga 350 deri 850.
+- **Age:** Klientet kane moshe mesatare 38.9 vjec, me interval 18-92 vjec.
+- **Balance:** Mesorja (97,198 EUR) eshte me e larte se mesatarja (76,486 EUR),
+  duke treguar se shume kliente kane bilanc zero, gje qe e terheq mesataren poshte.
+- **Exited:** Rreth 20.4% e klienteve (2,037 nga 10,000) kane braktisur banken.
+
+## Identifikimi i vlerave te mungara
+
+```{r vlerat_mungese}
+colSums(is.na(banka))     # colSums(is.na()) na jep numrin e NA-ve per cdo kolone
+```
+Nuk ka asnje vlere te munguar (NA) ne asnje kolone.Dataseti eshte i plote dhe nuk kerkon trajtim te NA-ve.
+
+---
+
+# Pastrimi i te dhenave (Data Cleaning)
+
+## Konvertimi i variablave kategorike
+```{r pastrimi}
+# Konvertojme variablat kategorike ne faktore me etiketa te qarta.Arsyeja eshte R do t'i trajtoje si kategori, jo si numra te plote.
+banka_paster <- banka %>%
+  mutate(
+    Geography = factor(Geography),         #geography: variabel nominal me 3 nivele
+
+    Gender = factor(Gender),        #gender: variabel nominal binar
+
+    NumOfProducts = factor(NumOfProducts),    #numofproducts: e trajtojme si faktor (vlera 1, 2, 3, 4)
+    HasCrCard = factor(HasCrCard,               #hasCrCard: konvertojme 0/1 ne etiketa te qarta
+                       levels = c(0, 1),
+                       labels = c("Pa Karte", "Me Karte")),
+    IsActiveMember = factor(IsActiveMember,       #IsActiveMember: konvertojme 0/1 ne etiketa te qarta
+                            levels = c(0, 1),
+                            labels = c("Joaktiv", "Aktiv")),
+    Exited = factor(Exited,                   #exited: variabli kryesor i analizes - variabli i varur
+                    levels = c(0, 1),
+                    labels = c("Mbeti", "Braktisi"))
+  )
+glimpse(banka_paster)                   #kontrollojme strukturen pas konvertimit
+```
+
+Pas konvertimit, glimpse() konfirmon se transformimet shkuan si duhet. Variablat Geography, Gender dhe NumOfProducts shfaqin tani tipin <fct> (faktor), ndersa HasCrCard, IsActiveMember dhe Exited jo vetem qe jane konvertuar ne faktore, por kane edhe etiketa te qarta dhe kuptimplote ne vend te vlerave 0 dhe 1.
+Dataseti banka_paster eshte tani i gatshem per analize, variablat trajtohen nga R-i sipas natyrës se tyre te vertete, gje qe do te reflektohet si ne saktesine e llogaritjeve ashtu edhe ne cilesine e grafikeve ne hapat pasues.
+
+
+## Identifikimi i rreshtave te dyfishuar
+
+```{r duplikata}
+# Kontrollojme per rreshta te dyfishuar me duplicated()
+numri_duplikatave <- sum(duplicated(banka_paster))
+cat("Numri i rreshtave te dyfishuar:", numri_duplikatave, "\n")
+```
+
+Ne Datasetin tone nuk ka rreshta te dyfishuar.
+
+## Identifikimi i outliers
+
+```{r outliers_identifikim}
+# Perdorim metoden IQR per te identifikuar outliers ne variablat sasiore.
+# Rregulli IQR: vlerat jashte [Q1 - 1.5*IQR, Q3 + 1.5*IQR] jane outliers.
+# Q1 = kuantili i pare (25%), Q3 = kuantili i trete (75%)
+# IQR = Q3 - Q1 = gjatesia e intervalit nderkuartilor
+
+numero_outliers <- function(x) {          # Funksion ndihmes per te numeruar outliers per cdo kolone
+  Q1      <- quantile(x, 0.25, na.rm = TRUE)
+  Q3      <- quantile(x, 0.75, na.rm = TRUE)
+  IQR_val <- Q3 - Q1
+  # Kufiri i poshem dhe i siperm
+  kufiri_poshtem <- Q1 - 1.5 * IQR_val
+  kufiri_siperm  <- Q3 + 1.5 * IQR_val
+  sum(x < kufiri_poshtem | x > kufiri_siperm)
+}
+
+# Aplikojme funksionin per cdo variabel sasior
+cols_sasiore <- c("CreditScore", "Age", "Tenure", "Balance", "EstimatedSalary")
+sapply(banka_paster[cols_sasiore], numero_outliers)
+```
+
+Variabli **Age** ka outliers (kliente te moshuar mbi kufirin
+e IQR). Megjithate, keto vlera jane biologjikisht te mundshme (mosha deri 92
+vjec), prandaj i mbajme dhe nuk i heqim. Ato jane vlera reale, jo gabime
+hyrjeje. Vendimi per te ruajtur outliersat bazohet ne kontekstin e te dhenave.
+
+---
+
+# Paraqitje grafike per variablat
+
+## Histogram - Shperndarja e Moshes
+
+```{r histogram_mosha}
+ggplot(banka_paster, aes(x = Age)) +
+  geom_histogram(binwidth = 5,
+                 fill     = "plum1",
+                 color    = "white") +
+  labs(
+    title = "Shperndarja e Moshes se Klienteve",
+    x     = "Mosha (vite)",
+    y     = "Numri i Klienteve"
+  ) +
+  theme_minimal()
+```
+Per te vizualizuar shperndarjen e moshes se klienteve, zgjodhëm histogramen si grafikun me te pershtatshem. Kjo sepse mosha eshte nje variabel sasior i vazhdueshem, dhe histograma eshte mjeti ideal per te treguar se si shperndahen vlerat e nje variabli te tille. Ne kete rast perdorim binwidth = 5, qe do te thote cdo shtylle perfshin nje interval 5-vjecar.
+Nga grafiku vihet re se shperndarja e moshes eshte e anuar djathtas (right-skewed), pra shumica e klienteve jane te perqendruar ne moshën 25-45 vjec, me max rreth 35 vjec. Klientet mbi 60 vjec jane relativisht te rralle, gje qe tregon se baza kryesore e klienteve te kesaj banke perbehet nga individe ne moshe aktive pune.
+
+## Histogram - Shperndarja e Credit Score
+
+```{r histogram_creditscore}
+ggplot(banka_paster, aes(x = CreditScore)) +
+  geom_histogram(binwidth = 25,
+                 fill     = "plum2",
+                 color    = "white") +
+  labs(
+    title = "Shperndarja e Credit Score",
+    x     = "Credit Score",
+    y     = "Numri i Klienteve"
+  ) +
+  theme_minimal()
+```
+
+Shperndarjen e Credit Score, zgjodhem ta vizualizonim perseri me histogram, pasi Credit Score eshte gjithashtu nje variabel sasior i vazhduesshem. Ne kete rast perdorim binwidth = 25, duke grupuar vlerat ne intervale me te gjera krahasuar me moshën, sepse Credit Score ka nje rang me te gjere vlerash (350-850).
+Vihet re se Credit Score ndjek nje shperndarje pothuajse normale,vlerat jane te shperndarura ne menyre te barabarte rreth qendres, me max rreth 650. Ndryshe nga shperndarja e moshes, ketu nuk vihet re asimetri e theksuar ne asnjerin drejtim, gje qe tregon se klientet e kesaj banke kane nivele krediti relativisht te ekuilibruara, as te perqendruar ne vlera shume te uleta, as ne vlera shume te larta.
+
+## Boxplot - Bilanci sipas gjinise
+```{r boxplot_bilanci}
+ggplot(banka_paster, aes(x = Gender, y = Balance, fill = Gender)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("Female" = "magenta1", "Male" = "dodgerblue")) +
+  labs(
+    title = "Shperndarja e bilancit bankar sipas gjinise",
+    x     = "Gjinia",
+    y     = "Bilanci (EUR)"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+Per shperndarjen e bilancit bankar sipas gjinise, zgjodhem boxplotin. Boxplot na lejon te krahasojme shperndarjen e nje variabli sasior, ne kete rast bilancin midis dy grupeve kategorike njekohesisht, duke na treguar medianen, kuartilet, mustaqet dhe outliersat per secilin grup.
+Nga grafiku vihet re se bilanci bankar eshte pothuajse i njejte midis meshkujve dhe femrave.
+Mesorja e te dy grupeve eshte e ngjashme, duke sugjeruar se gjinia nuk eshte nje faktor qe ndikon ndjeshme ne nivelin e bilancit te klientit. Nje gjetje e rendesishme qe del nga grafiku eshte prania e outliersve ne te dy grupet , kliente me bilanc shume te larte qe dalin qarte jashte mustaqeve te boxplotit. Keto vlera ekstreme, megjithese te rralla, tregojne se banka ka nje numer te vogel klientesh me kapital shume te larte, te shperndare ne menyre te barabarte midis gjinive.
+
+## Violin Plot - Bilanci sipas statusit te braktisjes
+
+```{r violin_bilanci}
+ggplot(banka_paster, aes(x = Exited, y = Balance, fill = Exited)) +
+  geom_violin(alpha = 0.7) +
+  geom_boxplot(width = 0.1, fill = "white") +
+  scale_fill_manual(values = c("Mbeti" = "greenyellow", "Braktisi" = "mediumturquoise")) +
+  labs(
+    title = "Shperndarja e bilancit sipas statusit te braktisjes",
+    x     = "Statusi",
+    y     = "Bilanci (EUR)"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+Shperndarjen e bilancit sipas statusit te braktisjes, zgjodhem ta vizualizonim dhe me violin plot. Violin plot eshte superior ndaj boxplot-it ne kete situate, pasi nuk tregon vetem medianen dhe kuartilet, por edhe formen e plote te shperndarjes. Gjeresia e violines ne cdo pike tregon sa te shpeshta jane vlerat ne ate nivel. Brenda violines kemi shtuar nje boxplot te vogel per te lexuar me lehtesi medianen dhe kuartilet.
+Nga grafiku vihet re nje dallim i qarte midis dy grupeve. Klientet qe mbeten kane nje shperndarje me te ekuilibruar te bilancit ndersa klientet qe braktisin shfaqin nje shperndarje bimodale, nje grup i konsiderueshem me bilanc afersisht zero dhe nje grup tjeter me bilanc te larte. Kjo gjetje eshte e rendesishme pasi na tregon se si klientet me bilanc shume te ulet ashtu edhe ata me bilanc te larte jane me te prirur te braktisin banken, por per arsye te ndryshme.
+
+## Barplot - Shperndarja sipas gjinise
+
+```{r}
+ggplot(banka_paster, aes(x = Gender, fill = Gender)) +
+  geom_bar() +
+  scale_fill_manual(values = c("Female" = "magenta1",
+                               "Male" = "dodgerblue")) +
+  labs(
+    title = "Shperndarja e klienteve sipas gjinise",
+    x = "Gjinia",
+    y = "Numri i Klienteve"
+  ) +
+  theme_minimal()
+```
+Ketu shohim se meshkujt kane nje shperndarje me te madhe sesa femrat.
+
+## Barplot - Shperndarja sipas vendeve
+
+```{r barplot_vendeve}
+library(ggplot2)
+
+# Te dhenat reale nga dataseti
+flag_data <- data.frame(
+  Country = rep(c("France", "Germany", "Spain"), each = 3),
+  xmin = c(0.7, 1.0, 1.3,
+            1.7, 2.0, 2.3,
+            2.7, 3.0, 3.3),
+  xmax = c(1.0, 1.3, 1.6,
+            2.0, 2.3, 2.6,
+            3.0, 3.3, 3.6),
+  ymin = 0,
+  ymax = c(5014, 5014, 5014,    # France
+            2509, 2509, 2509,    # Germany
+            2477, 2477, 2477),   # Spain
+  fill = c(
+    "#0055A4", "#FFFFFF", "#EF4135",   # France: Blu, Bardhe, Kuqe
+    "#222221", "#DD0000", "#FFCE00",   # Germany: Zeze, Kuqe, Verdhe
+    "#AA151B", "#F1BF00", "#AA151B"    # Spain: Kuqe, Verdhe, Kuqe
+  )
+)
+
+ggplot(flag_data) +
+  geom_rect(aes(
+    xmin = xmin,
+    xmax = xmax,
+    ymin = ymin,
+    ymax = ymax,
+    fill = fill
+  ),
+  color = "white",
+  linewidth = 0.3) +
+  scale_fill_identity() +
+  scale_x_continuous(
+    breaks = c(1.15, 2.15, 3.15),
+    labels = c("France", "Germany", "Spain")
+  ) +
+  scale_y_continuous(
+    breaks = seq(0, 5000, by = 1000),
+    labels = scales::comma
+  ) +
+  labs(
+    title = "Numri i klienteve sipas vendit",
+    x     = "",
+    y     = "Numri i Klienteve"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "none",
+    plot.title      = element_text(hjust = 0.5, face = "bold"),
+    axis.text.x     = element_text(size = 11, face = "bold")
+  )
+```
+
+Per te vizualizuar shperndarjen e klienteve sipas vendeve, zgjodhem nje barplot te personalizuar ku cdo shtylle eshte e ndertuar me ngjyrat e flamurit te vendit perkates. Kjo qasje, pervec qe permban te njejtin informacion si nje barplot klasik, e ben grafikun me intuitiv dhe me te lehte per t'u lexuar sepse syte drejtohen menjehere vendit perkates pa pasur nevoje te shikojne legjenden.
+
+Nga grafiku vihet re qarte se Franca ka numrin me te larte te klienteve me 5,014 kliente, duke perfaqesuar afersisht 50% te bazes se klienteve te bankes. Gjermania dhe Spanja jane ne nivele te ngjashme me njera-tjetren, me perkatësisht 2,509 dhe 2,477 kliente. Ky disekuiliber ne shperndarjen gjeografike te klienteve eshte nje element i rendesishem qe duhet mbajtur parasysh ne analizat pasuese, vecanerisht kur krahasojme normat e braktisjes sipas vendeve.
+
+## Barplot - Statusi i braktisjes
+
+```{r barplot_exited}
+ggplot(banka_paster, aes(x = Exited, fill = Exited)) +
+  geom_bar() +
+  geom_text(stat  = "count",
+            aes(label = after_stat(count)),
+            vjust = -0.5) +
+  scale_fill_manual(values = c("Mbeti" = "lightgreen", "Braktisi" = "lightslateblue")) +
+  labs(
+    title = "Numri i Klienteve: Mbeten vs. Braktisen",
+    x     = "Statusi",
+    y     = "Numri i Klienteve"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+Me ane te Barplotit per variablin Exited tregojme balancen e klasave.
+7,963 kliente (79.6%) mbeten ne banke, ndersa 2,037 kliente (20.4%) e braktisen. Kemi nje cekuiliber klasash ku shumica e klienteve nuk e braktisen banken.
+
+##Barplot - IsACtiveMember
+
+```{r}
+ggplot(banka_paster, aes(x = IsActiveMember, fill = IsActiveMember)) +
+  geom_bar() +
+  scale_fill_manual(values = c("Joaktiv" = "darkolivegreen1",
+                               "Aktiv" = "darkolivegreen")) +
+  labs(
+    title = "Klientet Aktiv dhe Joaktiv",
+    x = "Statusi i Aktivitetit",
+    y = "Numri i Klienteve"
+  ) +
+  theme_minimal()
+```
+
+Grafiku paraqet shperndarjen e klienteve aktiv dhe joaktiv ne banke. Nga grafiku verehet se numri i klienteve aktiv eshte pak me i larte krahasuar me klientet joaktiv. Kjo tregon se shumica e klienteve jane te angazhuar me sherbimet bankare dhe vazhdojne te perdorin produktet e bankes. Diferenca midis dy kategorive nuk eshte shume e madhe, cka tregon nje shperndarje relativisht te balancuar ndermjet klienteve aktiv dhe joaktiv.
+
+## Density Plot - Shperndarja e Pages
+
+```{r density_paga}
+ggplot(banka_paster, aes(x = EstimatedSalary)) +
+  geom_density(fill = "lightcyan1", alpha = 0.5) +
+  labs(
+    title = "Shperndarja e Pages se Vleresuar",
+    x     = "Paga e Vleresuar (EUR)",
+    y     = "Densiteti"
+  ) +
+  theme_minimal()
+```
+
+Density plot tregon formen e shperndarjes si nje kurbe te lemuar.Eshte alternative ndaj histogrames, me e pershtashme kur duam te shohim formen e pergjithshme pa ndikimin e binwidth.
+Shperndarja e pages eshte pothuajse uniforme midis 0 dhe 200,000 EUR. Kjo tregon se paga nuk ka nje model te vecante koncentrimi,klientet jane te shperndare gati ne menyre te barabarte nepermjet niveleve
+te ndryshme pagash.
+
+---
+
+# Analiza bivariate e variablave numerike
+
+## Scatter Plot - Credit Score vs. Age
+
+```{r scatter_age_credit}
+ggplot(banka_paster, aes(x = Age, y = CreditScore)) +
+  geom_point(alpha = 0.3, color = "darkturquoise") +
+  geom_smooth(method = "lm", se = FALSE, color = "darkorchid1") +
+  labs(
+    title = "Marredhenia midis Moshes dhe Credit Score",
+    x     = "Mosha (vite)",
+    y     = "Credit Score"
+  ) +
+  theme_minimal()
+```
+
+Scatter plot na tregon marredhenien midis dy variablave sasiore.Duke qene se kemi shume te dhena perdorem alpha = 0.3 per te menaxhuar mbivendosjen e pikave (overplotting).
+geom_smooth(method="lm") shton vijen e regresit linear si reference.
+Shohim se nuk ka nje marredhenie lineare te qarte midis moshes dhe Credit Score. Pikat jane te shperndarura gjersisht, duke sugjeruar lidhje te dobet ose inekzistente midis ketyre dy variablave.
+
+## Scatter Plot - Balance vs. Estimated Salary
+
+```{r scatter_balance_salary}
+# Scatter plot me ngjyre sipas Exited per te paraqitur nje variabel te trete.
+# color = Exited na lejon te shohim nese lidhja ndryshon sipas grupit.
+# Ky eshte nje shembull i perdorimit te estetikes per dimension te trete.
+
+ggplot(banka_paster, aes(x = EstimatedSalary,
+                          y = Balance,
+                          color = Exited)) +
+  geom_point(alpha = 0.3) +
+  labs(
+    title = "Bilanci vs. Paga sipas Statusit te Braktisjes",
+    x     = "Paga e Vleresuar (EUR)",
+    y     = "Bilanci (EUR)",
+    color = "Statusi"
+  ) +
+  theme_minimal()
+```
+
+Nuk shihet nje model i qarte midis pages dhe bilancit.
+Klientet qe braktisin banken (portokalli) jane te shperndarur gjersisht
+ne te gjitha nivelet e pages dhe bilancit, duke sugjeruar se keta dy
+variabla nuk jane parashikues te fuqishem individual te braktisjes.
+
+## Koeficienti i Korrelacionit
+
+```{r korrelacioni}
+# cor() llogarit koeficientin e korrelacionit Pearson midis variablave numerike.
+# Pearson mat forcen dhe drejtimin e marredhenies LINEARE.
+# r e +1 = lidhje pozitive perfekte | r = -1 = lidhje negative perfekte
+# r afar 0 = lidhje e dober ose inekzistente
+# use = "complete.obs" perdor vetem rreshtat pa NA
+
+vars_numerike <- banka_paster %>%
+  select(CreditScore, Age, Tenure, Balance, EstimatedSalary)
+
+# Llogarisim matricen e korrelacionit
+matrica_kor <- cor(vars_numerike, use = "complete.obs")
+
+# Shfaqim me 2 shifra dhjetore
+round(matrica_kor, 2)
+```
+
+- **Age & Balance (r = 0.29):** Lidhje e dobet pozitive, klientet me te
+  moshuar kane tendence te kene bilanc paksa me te larte.
+- Te gjitha korrelacionet e tjera jane shume afer zeros (|r| < 0.1),
+  duke treguar lidhje praktikisht inekzistente midis variablave te tjere numerike.
+- **Konkluzioni:** Variablat numerike jane kryesisht te pavarur nga njeri-tjetri.
+
+## Grafiku i Korrelacionit me corrplot
+
+```{r corrplot}
+# method = "color": perdor ngjyren per te mbushur katrore
+# type = "upper": shfaq vetem trekendershin e siperm (matrica eshte simetrike)
+# order = "hclust": rirendon variablat duke grupuar ato me te lidhur ngushtesisht
+# addCoef.col: shton koeficientin numerik brenda cdo katrorit
+# Blu = korrelacion pozitiv | Kuq = korrelacion negativ
+# Ngjyra me intensive = lidhje me e forte
+
+corrplot(matrica_kor,
+         method      = "color",
+         type        = "upper",
+         order       = "hclust",
+         addCoef.col = "black",
+         tl.col      = "black",
+         tl.srt      = 45,
+         diag        = FALSE,
+         title       = "Matrica e Korrelacionit - Variablat Numerike",
+         mar         = c(0, 0, 2, 0))
+```
+Me ane te Corrplot vizualizojme matricen e korrelacionit me ngjyra dhe forma.Kjo e ben shume me te lehte identifikimin e variablave me korrelacion te larte.
+Grafiku konfirmon gjetjet numerike. Ngjyra me intensive eshte midis **Age dhe Balance** (blu e lehte, r = 0.29). Te gjitha ciftet e tjera kane ngjyra shume te zbehta, duke konfirmuar mungesen e
+multikolinearitetit. Corrplot e ben shume me te lehte identifikimin vizual te korrelacioneve te forta ne nje shikim te vetem.
+
+---
+
+# Analiza bivariate e variablave kategorike
+
+## Tabela kontingjence - gjinia dhe braktisja
+
+```{r tabela_gjinia_exited}
+# table() krijon tabelen kontingjence me numra absolute.
+# Shfaq numrin e klienteve per cdo kombinim Gender x Exited.
+# Numrat absolute jane hapi i pare por mund te jene mashtruese nese grupet kane madhesi te ndryshme.
+tabela_abs <- table(banka_paster$Gender, banka_paster$Exited)
+print(tabela_abs)
+```
+
+```{r perqindjet_gjinia}
+# prop.table(margin=1) llogarit perqindjet sipas rreshtit.
+# margin = 1 = perqindje sipas rreshtit (shuma e cdo rreshti = 100%)
+# margin = 2 = perqindje sipas kolones (shuma e cdo kolone = 100%)
+# Keto perqindje jane me te drejta sesa numrat absolute per krahasim.
+tabela_prc <- prop.table(tabela_abs, margin = 1) * 100
+round(tabela_prc, 1)
+```
+
+Shohim se femrat kane nje norme braktisje prej rreth **25.1%**,
+ndersa meshkujt kane **16.5%**. Kjo tregon se femrat braktisin banken me
+norme dukshem me te larte sesa meshkujt.
+
+## Barplot i Grupuar - Gjinia dhe Braktisja
+
+```{r barplot_gjinia_exited}
+# Barplot i grupuar (position = "dodge") per krahasim absolutesh.
+# Shtylla te ndara krah per krah lehtesojne krahasimin e numrave
+# midis kategorive. Me i mire per krahasim numerash absolute.
+
+ggplot(banka_paster, aes(x = Gender, fill = interaction(Gender, Exited))) +
+  geom_bar(position = "dodge") +
+  labs(
+    title = "Statusi i Braktisjes sipas Gjinise",
+    x     = "Gjinia",
+    y     = "Numri i Klienteve",
+    fill  = "Statusi"
+  ) +
+  scale_fill_manual(values = c(
+    "Female.Mbeti"     = "pink",
+    "Female.Braktisi"  = "pink1",
+    "Male.Mbeti"       = "lightblue1",
+    "Male.Braktisi"    = "lightblue"
+  )) +
+  theme_minimal()
+```
+
+Si tek femrat ashtu edhe tek meshkujt, numri i klienteve qe kane mbetur eshte dukshem me i madh se numri i atyre qe kane braktisur banken.
+Meshkujt kane nje numer me te madh klientesh aktive krahasuar me femrat.
+Nga ana tjeter, femrat duket se kane pak me shume raste braktisjeje sesa meshkujt.
+Grafiku ndihmon per te kuptuar nese gjinia ka lidhje me tendencen e klienteve per te qendruar apo per t’u larguar nga banka.
+
+
+## Stacked Barplot 100% - Vendi dhe Braktisja
+
+```{r stacked_barplot}
+# Barplot 100% (position = "fill") tregon perqindjet e kushtezuara.
+# Eshte vizualizimi direkt i tabeles se perqindjeve te rreshtit.
+# Lejon krahasim te drejte midis grupeve me madhesi te ndryshme.
+# scale_y_continuous(labels = scales::percent) shton % ne boshtin Y.
+
+
+ggplot(banka_paster, aes(x = Geography, fill = Exited)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    title = "Perqindja e Braktisjes sipas Vendit",
+    x     = "Vendi",
+    y     = "Perqindja",
+    fill  = "Statusi"
+  ) +
+  theme_minimal()
+```
+
+Shohim se Gjermania ka normen me te larte te braktisjes midis tre
+vendeve. Franca dhe Spanja kane norma te ngjashme dhe me te uleta.
+Ky eshte nje sinjal i rendesishem pra klientet gjermane jane me te prirur
+te braktisin banken.
+
+## Tabela Kontingjence - Vendi dhe Braktisja
+
+```{r tabela_vendi_exited}
+# Tabela kontingjence per Vendi x Braktisja
+tabela_geo <- table(banka_paster$Geography, banka_paster$Exited)
+print(tabela_geo)
+
+# Perqindjet sipas rreshtit: "Cfare % e klienteve nga cdo vend braktisen?"
+round(prop.table(tabela_geo, margin = 1) * 100, 1)
+```
+
+- **France:** 16.2% e klienteve franceze braktisen.
+- **Germany:** 32.4% e klienteve gjermane braktisen, norma me e larte!
+- **Spain:** 16.7% e klienteve spanjolle braktisen.
+
+Gjermania ka norme braktisje gati dyfishin e Frances dhe Spanjes.
+
+## Barplot 100% - Anetaresia aktive dhe braktisja
+
+```{r barplot_aktiv_exited}
+# Barplot 100% per IsActiveMember vs Exited.
+# Perdorim position="fill" per krahasim perqindjesh midis grupeve.
+
+ggplot(banka_paster, aes(x = IsActiveMember, fill = Exited)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    title = "Norma e Braktisjes sipas Statusit te Anetaresise",
+    x     = "Statusi i Anetaresise",
+    y     = "Perqindja",
+    fill  = "Statusi"
+  ) +
+  theme_minimal()
+```
+
+Anetaret joaktiv kane norme braktisje dukshem me te
+larte (~26.9%) sesa anetaret aktive (~14.3%). Anetaresia aktive eshte
+nje faktor mbrojtes i rendesishem kunder braktisjes.
+
+---
+
+# Grafike te avancuara (Leksioni 10)
+
+## Heatmap - Produktet Bankare sipas Vendit
+
+```{r heatmap}
+# Heatmap (geom_tile) vizualizon nje matrice vlerash me ngjyra.
+# Perdoret kur kemi dy variabla kategorike dhe duam te shohim
+# frekuencen ose vleren per cdo kombinim te tyre.
+# Boshti X = Geography, Boshti Y = NumOfProducts
+# Ngjyra = numri i klienteve ne cdo kombinim (me e erret = me shume)
+# geom_text shton numrat brenda cdo katrorit per lexim te drejte.
+# scale_fill_gradient percakton gradentin e ngjyrave.
+
+heatmap_data <- banka_paster %>%
+  count(Geography, NumOfProducts)
+
+ggplot(heatmap_data, aes(x = Geography,
+                          y = NumOfProducts,
+                          fill = n)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = n), color = "black", size = 4) +
+  scale_fill_gradient(low = "lightblue", high = "darkblue") +
+  labs(
+    title = "Frekuenca e Numrit te Produkteve sipas Vendit",
+    x     = "Vendi",
+    y     = "Numri i Produkteve Bankare",
+    fill  = "Numri i\nKlienteve"
+  ) +
+  theme_minimal()
+```
+
+Heatmap tregon se kombinimi me i shpeshte eshte **1 produkt
+ne France** (2,491 kliente, katrori me i erret). Klientet me 3 ose 4
+produkte jane te rralle ne te tre vendet (katrore shume te lehte).
+Gjermania dhe Spanja kane nje shperndarje me te barabarte te produkteve
+sesa Franca.
+
+## Grafik Interaktiv me ggplotly
+
+```{r ggplotly}
+# ggplotly() konverton nje grafik ggplot statik ne nje version interaktiv.
+# Perdoruesit mund te:
+# - kalojne mouse mbi pika per te pare detajet
+# - zmadhojne zona specifike
+# - filtrojne grupe nga legjenda
+# text ne aes() percakton cfare shfaqet kur kalon mouse mbi nje pike.
+
+p <- ggplot(banka_paster,
+            aes(x     = Age,
+                y     = Balance,
+                color = Exited,
+                text  = paste("Moshe:", Age,
+                              "<br>Bilanc:", round(Balance, 0),
+                              "<br>Statusi:", Exited))) +
+  geom_point(alpha = 0.4) +
+  labs(
+    title = "Bilanci vs. Mosha sipas Statusit te Braktisjes",
+    x     = "Mosha (vite)",
+    y     = "Bilanci (EUR)",
+    color = "Statusi"
+  ) +
+  theme_minimal()
+
+# Konvertojme ne interaktiv me nje rresht kod
+ggplotly(p, tooltip = "text")
+```
+
+Grafiku interaktiv na lejon eksplorimin e detajuar te te
+dhenave. Duke kaluar mouse mbi cdo pike, shfaqen mosha, bilanci dhe statusi
+i klientit. Vihet re se klientet me moshe me te larte (50+ vjec) dhe bilanc
+te mesem-te larte kane tendence me te madhe per te braktisur banken. Kjo
+eshte nje gjetje qe del me qarte nepermjet interaktivitetit.
+
+---
+
+# Perfundim
+
+Nga Dataseti arritem te dalim ne keto konkluzione:
+
+**1.Profili Demografik:**
+
+- Shumica e klienteve jane te moshes 25-45 vjec, me moshe mesatare 38.9 vjec.
+- Franca dominon bazen e klienteve me 50% te vrojtimeve.
+- Credit Score ndjek nje shperndarje pothuajse normale me mesatare 650.
+
+**2.Norma e Braktisjes:**
+
+- 20.4% e klienteve braktisen banken dhe ky eshte nje nivel relativisht i larte.
+
+**3.Faktoret kryesore te lidhur me braktisjen:**
+
+- **Gjinia:** Femrat braktisin me norme 25.1% vs. 16.5% e meshkujve.
+- **Vendi:** Klientet gjermane braktisin me norme 32.4%, shume me e larte
+  se Franca (16.2%) dhe Spanja (16.7%).
+- **Anetaresia:** Klientet joaktiv braktisin 2x me shume se ata aktive.
+- **Bilanci:** Violin plot tregon se klientet qe braktisin kane shperndarje
+  bimodale te bilancit nje grup me bilanc zero dhe nje grup me bilanc te larte.
+
+**4.Korrelacionet Numerike:**
+
+- Variablat numerike jane kryesisht te pavarur nga njeri-tjetri.
+- Lidhja me e forte u gjet midis Moshes dhe Bilancit (r = 0.29), ende e dobet.
+- Corrplot konfirmon vizualisht mungesen e multikolinearitetit.
+
+**5.Grafike te Avancuara:**
+
+- Heatmap tregon se kombinimi me i shpeshte eshte 1 produkt ne France.
+- Klientet me 3-4 produkte jane te rralle ne te tre vendet.
+- Grafiku interaktiv lejon eksplorimin e detajuar te marredhenies Age-Balance.
+```
+                                  FALEMINDERIT :)
